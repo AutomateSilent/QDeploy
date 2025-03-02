@@ -1,0 +1,50 @@
+name: QDeploy Issue
+description: Report a bug or suggest an enhancement
+title: "[Issue]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thanks for contributing to QDeploy!
+        Please fill out the information below to help us address your feedback quickly.
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      description: Is this a bug report or an enhancement suggestion?
+      options:
+        - Bug Report
+        - Enhancement Suggestion
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: |
+        For bugs: What happened? What did you expect to happen?
+        For enhancements: What would you like to see added or improved?
+      placeholder: "Describe your issue or idea here..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce (for bugs)
+      description: If reporting a bug, please provide the steps to reproduce the issue
+      placeholder: |
+        1. Install QDeploy using...
+        2. Run the script with...
+        3. See error...
+  - type: input
+    id: version_info
+    attributes:
+      label: Environment (for bugs)
+      description: If reporting a bug, please provide PowerShell version ($PSVersionTable.PSVersion)
+      placeholder: "PowerShell 5.1 on Windows 10"
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: Additional Information
+      description: Any other context, screenshots, or details that might be helpful

@@ -7,26 +7,42 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+        
       - name: Create ZIP artifact
+        shell: pwsh
         run: |
           # Create a temporary directory for the QDeploy folder only
-          mkdir -p temp/QDeploy
+          $releasePath = ".\temp\QDeploy"
+          New-Item -Path $releasePath -ItemType Directory -Force
           
-          # Copy only the QDeploy folder contents (exclude readme, license, etc.)
-          cp -r QDeploy.ps1 Helpers Support temp/QDeploy/
+          # Copy QDeploy.ps1
+          Copy-Item -Path ".\QDeploy.ps1" -Destination $releasePath
           
-          # Create the ZIP file
-          cd temp
-          zip -r ../QDeploy.zip QDeploy
-          cd ..
+          # Copy Helpers directory if it exists
+          if (Test-Path -Path ".\Helpers") {
+            Copy-Item -Path ".\Helpers" -Destination $releasePath -Recurse
+          }
           
-          # List the contents for verification
-          unzip -l QDeploy.zip
+          # Create Support directory even if it doesn't exist yet
+          $supportPath = Join-Path -Path $releasePath -ChildPath "Support"
+          New-Item -Path $supportPath -ItemType Directory -Force
+          
+          # If Support directory exists in source, copy its contents
+          if (Test-Path -Path ".\Support") {
+            Copy-Item -Path ".\Support\*" -Destination $supportPath -Recurse -ErrorAction SilentlyContinue
+          }
+          
+          # Create the ZIP file (just the folder, not the parent path)
+          Compress-Archive -Path ".\temp\QDeploy" -DestinationPath ".\QDeploy.zip" -Force
+          
+          # Get the contents of the ZIP for verification
+          Write-Host "ZIP contents:"
+          Expand-Archive -Path ".\QDeploy.zip" -DestinationPath ".\verify" -Force
+          Get-ChildItem -Path ".\verify" -Recurse | Select-Object FullName
 
       - name: Create Release
         id: create_release

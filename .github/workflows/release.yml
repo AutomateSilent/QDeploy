@@ -1,0 +1,41 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create ZIP artifact
+        run: |
+          # Create a temporary directory for the QDeploy folder only
+          mkdir -p temp/QDeploy
+          
+          # Copy only the QDeploy folder contents (exclude readme, license, etc.)
+          cp -r QDeploy.ps1 Helpers Support temp/QDeploy/
+          
+          # Create the ZIP file
+          cd temp
+          zip -r ../QDeploy.zip QDeploy
+          cd ..
+          
+          # List the contents for verification
+          unzip -l QDeploy.zip
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: QDeploy.zip
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

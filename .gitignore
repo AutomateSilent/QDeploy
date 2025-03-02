@@ -1,0 +1,29 @@
+# PowerShell artifacts
+*.psd1
+*.psm1
+
+# Windows artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Installer logs
+*.log
+
+# Zip files
+*.zip
+
+# Backup files
+*~
+*.bak
+
+# Temp files
+temp/
+.tmp/
+
+# Development environment files
+.vs/
+.vscode/
+*.suo
+*.user

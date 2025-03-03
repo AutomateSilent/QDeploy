@@ -13,18 +13,21 @@
     $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
     Write-Host "Script Path: $scriptPath"
 
-    # Import Initialize-Deployment first
+    # Import primary helps first
     . "$scriptPath\Helpers\Initialize-Deployment.ps1"
+    . "$scriptPath\Helpers\Write-DeploymentLog.ps1"
 
     # Initialize deployment before importing other helpers
     Initialize-Deployment -AppName $AppName
 
     # Now import remaining helpers
-    Get-ChildItem -Path "$scriptPath\Helpers" -Filter "*.ps1" -Recurse | Where-Object { $_.Name -ne "Initialize-Deployment.ps1" } | ForEach-Object 
-    {
-        . $_.FullName
-        Write-Verbose "Imported helper: $($_.Name)"
-    }
+    $helperScripts = Get-ChildItem -Path "$scriptPath\Helpers" -Filter "*.ps1" -Recurse -Force | 
+                    Where-Object { $_.Name -ne "Initialize-Deployment.ps1" -and $_.Name -ne "Write-DeploymentLog.ps1" }
+                
+    foreach ($script in $helperScripts) {
+        . $script.FullName
+        Write-Verbose "Imported helper: $($script.Name)"
+    }    
     
 function Install-Script 
 {

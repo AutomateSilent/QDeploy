@@ -35,8 +35,9 @@
 .NOTES
     Name: Install-Software
     Author: AutomateSilent
-    Version: 1.0.1
-    Last Updated: 2025-02-04
+    Version: 1.0.2
+    Last Updated: 2025-03-04
+    Requires: Write-DeploymentLog function to be imported prior to execution
 #>
 function Install-Software {
     [CmdletBinding()]
@@ -48,7 +49,7 @@ function Install-Software {
             ValueFromPipelineByPropertyName = $true,
             HelpMessage = "The full path to the EXE or MSI file to install."
         )]
-        [ValidateScript({ Test-Path $_ })]
+        [ValidateScript({ Test-Path $_ -PathType Leaf })]
         [string]$FilePath,
 
         [Parameter(
@@ -69,21 +70,39 @@ function Install-Software {
     )
 
     begin {
+        # Legacy logging function kept for backward compatibility
         function Write-InstallLog {
-            param($Message)
-            $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            $logMessage = "[$timestamp] $Message"
-            if ($Log) { Add-Content -Path $Log -Value $logMessage }
-            Write-Host $logMessage
+            param($Message, $Level = 'Info')
+            
+            # Log entry will be captured by Write-DeploymentLog
+            # This wrapper ensures compatibility with existing code
+            if ($Level -eq 'ERROR') {
+                Write-DeploymentLog -Message $Message -Level 'Error'
+            }
+            elseif ($Level -eq 'WARNING') {
+                Write-DeploymentLog -Message $Message -Level 'Warning'
+            }
+            else {
+                Write-DeploymentLog -Message $Message -Level 'Info'
+            }
+            
+            # Legacy log file handling
+            if ($Log) {
+                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                $logMessage = "[$timestamp] $Message"
+                Add-Content -Path $Log -Value $logMessage
+            }
         }
 
         try {
             # Convert to absolute path to avoid any path-related issues
             $FilePath = (Resolve-Path $FilePath).Path
             Write-Verbose "Initializing installation process for $FilePath"
+            Write-DeploymentLog -Message "Initializing installation process for $FilePath" -Level Info
         }
         catch {
             Write-Error "Initialization failed: $_"
+            Write-DeploymentLog -Message "Initialization failed: $_" -Level Error
             return
         }
     }
@@ -92,11 +111,11 @@ function Install-Software {
         try {
             $extension = [System.IO.Path]::GetExtension($FilePath).TrimStart('.').ToLower()
             if ($extension -notin 'exe', 'msi') {
-                Write-InstallLog "ERROR: Unsupported file type '$extension'. Only EXE and MSI are supported."
+                Write-DeploymentLog -Message "Unsupported file type '$extension'. Only EXE and MSI are supported." -Level Error
                 return
             }
 
-            Write-InstallLog "Starting installation: $FilePath"
+            Write-DeploymentLog -Message "Starting installation: $FilePath" -Level Info
 
             if ($extension -eq 'exe') {
                 $params = @{
@@ -105,17 +124,20 @@ function Install-Software {
                     PassThru = $true
                     Verb = 'RunAs'  # Ensures elevated privileges
                 }
-                if ($Arguments) { $params.ArgumentList = $Arguments }
+                if ($Arguments) { 
+                    $params.ArgumentList = $Arguments 
+                    Write-DeploymentLog -Message "Using custom EXE arguments: $Arguments" -Level Info
+                }
                 $process = Start-Process @params
             }
             else {
                 # Default MSI arguments (silent install)
                 $msiArgs = if ($Arguments) {
-                    Write-InstallLog "Using custom MSI arguments: $Arguments"
+                    Write-DeploymentLog -Message "Using custom MSI arguments: $Arguments" -Level Info
                     "/i `"$FilePath`" $Arguments"
                 }
                 else {
-                    Write-InstallLog "Using default MSI arguments: /i `"$FilePath`" /qn"
+                    Write-DeploymentLog -Message "Using default MSI arguments: /i `"$FilePath`" /qn" -Level Info
                     "/i `"$FilePath`" /qn"
                 }
                 
@@ -123,14 +145,24 @@ function Install-Software {
                 $process = Start-Process "C:\Windows\System32\msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
             }
 
-            Write-InstallLog "Exit code: $($process.ExitCode). $(if ($process.ExitCode -ne 0) {'Installation failed!'} else {'Success!'})"
+            # Check exit code and log appropriate message
+            if ($process.ExitCode -eq 0) {
+                Write-DeploymentLog -Message "Installation completed successfully with exit code: $($process.ExitCode)" -Level Info
+            }
+            elseif ($process.ExitCode -eq 3010) {
+                Write-DeploymentLog -Message "Installation completed with exit code: $($process.ExitCode). System restart required." -Level Warning
+            }
+            else {
+                Write-DeploymentLog -Message "Installation failed with exit code: $($process.ExitCode)" -Level Error
+            }
         }
         catch {
-            Write-InstallLog "ERROR: $($_.Exception.Message)"
+            Write-DeploymentLog -Message "Installation error: $($_.Exception.Message)" -Level Error
         }
     }
 
     end {
         Write-Verbose "Installation process completed for $FilePath"
+        Write-DeploymentLog -Message "Installation process completed for $FilePath" -Level Info
     }
 }

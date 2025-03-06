@@ -8,6 +8,8 @@
 .DESCRIPTION
     This function installs software from a specified EXE or MSI file. It automatically detects the file type and handles installation accordingly. For MSI files, it defaults to silent installation (/qn) unless custom arguments are provided. Supports logging to a file if specified.
 
+    The function properly handles UNC paths, local paths, and paths with spaces, ensuring proper quoting and formatting for the installer.
+
 .PARAMETER FilePath
     The full path to the EXE or MSI file to install.
 
@@ -29,14 +31,18 @@
     Install-Software -FilePath "C:\package.msi" -Log "C:\install.log"
     Installs the MSI package silently and logs the process to the specified file.
 
+.EXAMPLE
+    Install-Software -FilePath "\\server\share\package.msi"
+    Installs the MSI package from a UNC path.
+
 .OUTPUTS
     None. Writes installation progress and results to the console and optionally to a log file.
 
 .NOTES
     Name: Install-Software
     Author: AutomateSilent
-    Version: 1.0.2
-    Last Updated: 2025-03-04
+    Version: 1.0.4
+    Last Updated: 2025-03-05
     Requires: Write-DeploymentLog function to be imported prior to execution
 #>
 function Install-Software {
@@ -49,7 +55,6 @@ function Install-Software {
             ValueFromPipelineByPropertyName = $true,
             HelpMessage = "The full path to the EXE or MSI file to install."
         )]
-        [ValidateScript({ Test-Path $_ -PathType Leaf })]
         [string]$FilePath,
 
         [Parameter(
@@ -94,11 +99,46 @@ function Install-Software {
             }
         }
 
+        # Function to clean and format UNC paths
+        function Format-UNCPath {
+            param([string]$Path)
+            
+            # Remove PowerShell provider prefix if present
+            if ($Path -match "^Microsoft\.PowerShell\.Core\\FileSystem::(.+)$") {
+                $Path = $Matches[1]
+                Write-Verbose "Removed provider prefix. Path now: $Path"
+            }
+            
+            # Handle UNC paths correctly by ensuring consistent format
+            if ($Path -match "^\\\\") {
+                # Ensure proper UNC path format (replace multiple consecutive backslashes)
+                $Path = $Path -replace "^\\{2,}", "\\" # Ensure exactly two backslashes at start for UNC
+                $Path = $Path -replace "\\{2,}", "\" # Replace any double backslashes in the rest of the path
+                Write-Verbose "Normalized UNC path: $Path"
+            }
+            
+            return $Path
+        }
+
         try {
-            # Convert to absolute path to avoid any path-related issues
-            $FilePath = (Resolve-Path $FilePath).Path
-            Write-Verbose "Initializing installation process for $FilePath"
-            Write-DeploymentLog -Message "Initializing installation process for $FilePath" -Level Info
+            # Clean and normalize the file path
+            $cleanPath = Format-UNCPath -Path $FilePath
+            Write-Verbose "Normalized path: $cleanPath"
+            
+            # Verify the file actually exists and is accessible
+            if (-not (Test-Path -LiteralPath $cleanPath -PathType Leaf -ErrorAction SilentlyContinue)) {
+                $errorMsg = "File not found or not accessible: $cleanPath"
+                Write-Error $errorMsg
+                Write-DeploymentLog -Message $errorMsg -Level Error
+                return
+            }
+            
+            # Store the cleaned path for use in the process block
+            $script:installerPath = $cleanPath
+            Write-Verbose "Installer path set to: $script:installerPath"
+            
+            Write-Verbose "Initializing installation process for $script:installerPath"
+            Write-DeploymentLog -Message "Initializing installation process for $script:installerPath" -Level Info
         }
         catch {
             Write-Error "Initialization failed: $_"
@@ -109,43 +149,63 @@ function Install-Software {
 
     process {
         try {
-            $extension = [System.IO.Path]::GetExtension($FilePath).TrimStart('.').ToLower()
+            # Get file extension
+            $extension = [System.IO.Path]::GetExtension($script:installerPath).TrimStart('.').ToLower()
+            
+            # Validate file type
             if ($extension -notin 'exe', 'msi') {
-                Write-DeploymentLog -Message "Unsupported file type '$extension'. Only EXE and MSI are supported." -Level Error
+                $errorMsg = "Unsupported file type '$extension'. Only EXE and MSI are supported."
+                Write-Error $errorMsg
+                Write-DeploymentLog -Message $errorMsg -Level Error
                 return
             }
 
-            Write-DeploymentLog -Message "Starting installation: $FilePath" -Level Info
-
+            Write-DeploymentLog -Message "Starting installation: $script:installerPath" -Level Info
+            
+            # Process based on file type
             if ($extension -eq 'exe') {
+                # Handle EXE installations
                 $params = @{
-                    FilePath = $FilePath
+                    FilePath = $script:installerPath
                     Wait = $true
                     PassThru = $true
                     Verb = 'RunAs'  # Ensures elevated privileges
                 }
+                
                 if ($Arguments) { 
                     $params.ArgumentList = $Arguments 
                     Write-DeploymentLog -Message "Using custom EXE arguments: $Arguments" -Level Info
                 }
+                
+                Write-Verbose "Starting EXE process with params: $($params | ConvertTo-Json -Compress)"
                 $process = Start-Process @params
             }
             else {
-                # Default MSI arguments (silent install)
-                $msiArgs = if ($Arguments) {
+                # Handle MSI installations
+                # The path must be properly quoted, especially for paths with spaces
+                $quotedPath = "`"$script:installerPath`""
+                Write-DeploymentLog -Message "Using installation path: $quotedPath" -Level Info
+                
+                # Build MSI command arguments
+                if ($Arguments) {
+                    $msiArgs = "/i $quotedPath $Arguments"
                     Write-DeploymentLog -Message "Using custom MSI arguments: $Arguments" -Level Info
-                    "/i `"$FilePath`" $Arguments"
                 }
                 else {
-                    Write-DeploymentLog -Message "Using default MSI arguments: /i `"$FilePath`" /qn" -Level Info
-                    "/i `"$FilePath`" /qn"
+                    $msiArgs = "/i $quotedPath /qn"
+                    Write-DeploymentLog -Message "Using default MSI arguments: /qn" -Level Info
                 }
                 
-                # Use full path to msiexec and run with proper verb
+                # Log full command for troubleshooting
+                $fullCommand = "msiexec.exe $msiArgs"
+                Write-Verbose "Full installation command: $fullCommand"
+                
+                # Execute MSI installation process
+                Write-Verbose "Starting MSI installation process"
                 $process = Start-Process "C:\Windows\System32\msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
             }
 
-            # Check exit code and log appropriate message
+            # Process the exit code
             if ($process.ExitCode -eq 0) {
                 Write-DeploymentLog -Message "Installation completed successfully with exit code: $($process.ExitCode)" -Level Info
             }
@@ -154,15 +214,34 @@ function Install-Software {
             }
             else {
                 Write-DeploymentLog -Message "Installation failed with exit code: $($process.ExitCode)" -Level Error
+                
+                # Provide more detailed error information for common MSI exit codes
+                switch ($process.ExitCode) {
+                    1619 {
+                        Write-DeploymentLog -Message "Error 1619: This installation package could not be opened. Verify that the package exists and that you can access it." -Level Error
+                        Write-Verbose "Path used: $script:installerPath"
+                        Write-Verbose "Check if the file exists: $(Test-Path -LiteralPath $script:installerPath -PathType Leaf)"
+                    }
+                    1603 {
+                        Write-DeploymentLog -Message "Error 1603: A fatal error occurred during installation. Check the MSI log for more details." -Level Error
+                    }
+                    1612 {
+                        Write-DeploymentLog -Message "Error 1612: The installation source for this product is not available. Verify the source exists and that you can access it." -Level Error
+                    }
+                    1638 {
+                        Write-DeploymentLog -Message "Error 1638: Another version of this product is already installed. Installation cannot continue." -Level Error
+                    }
+                }
             }
         }
         catch {
+            Write-Error "Installation error: $($_.Exception.Message)"
             Write-DeploymentLog -Message "Installation error: $($_.Exception.Message)" -Level Error
         }
     }
 
     end {
-        Write-Verbose "Installation process completed for $FilePath"
-        Write-DeploymentLog -Message "Installation process completed for $FilePath" -Level Info
+        Write-Verbose "Installation process completed for $script:installerPath"
+        Write-DeploymentLog -Message "Installation process completed for $script:installerPath" -Level Info
     }
 }

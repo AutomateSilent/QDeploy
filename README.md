@@ -21,7 +21,7 @@ QDeploy is a lightweight framework for creating structured, reliable PowerShell 
 Install QDeploy with a single PowerShell command (run as administrator):
 
 ```powershell
-irm https://raw.githubusercontent.com/AutomateSilent/QDeploy/main/Copy-QDeploy.ps1 | iex
+irm https://raw.githubusercontent.com/AutomateSilent/QDeploy/main/Copy-QDeploy.ps1 | iex -Verbose
 ```
 
 This will:
@@ -86,7 +86,7 @@ function Install-Script {
         
         # Install an MSI package
         $msiPath = Join-Path $scriptPath "MyApplication.msi"
-        Install-Software -FilePath $msiPath -Arguments "/quiet"
+        Install-Software -FilePath $msiPath
         
         # Copy a configuration file
         $configSource = Join-Path $SupportDir "config.xml"
@@ -103,23 +103,6 @@ function Install-Script {
 }
 ```
 
-### Custom Helper Function
-```powershell
-# In Helpers/Install-ConfigFile.ps1
-function Install-ConfigFile {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ConfigName
-    )
-    
-    $source = Join-Path $SupportDir "$ConfigName.xml"
-    $destination = "C:\Program Files\MyApplication\$ConfigName.xml"
-    
-    Write-DeploymentLog "Installing configuration: $ConfigName"
-    Copy-Item -Path $source -Destination $destination -Force
-}
-```
 
 ## 🔄 Integration with Deployment Tools
 

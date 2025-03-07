@@ -102,13 +102,13 @@ function Install-Software {
         # Function to clean and format UNC paths
         function Format-UNCPath {
             param([string]$Path)
-            
+    
             # Remove PowerShell provider prefix if present
             if ($Path -match "^Microsoft\.PowerShell\.Core\\FileSystem::(.+)$") {
                 $Path = $Matches[1]
                 Write-Verbose "Removed provider prefix. Path now: $Path"
             }
-            
+    
             # Handle UNC paths correctly by ensuring consistent format
             if ($Path -match "^\\\\") {
                 # Ensure proper UNC path format (replace multiple consecutive backslashes)
@@ -116,10 +116,27 @@ function Install-Software {
                 $Path = $Path -replace "\\{2,}", "\" # Replace any double backslashes in the rest of the path
                 Write-Verbose "Normalized UNC path: $Path"
             }
-            
+    
+            # Handle relative path components (..\) by converting to absolute path
+            # This resolves path navigation elements like ..\
+            try {
+                # Use GetFullPath method to resolve relative path components
+                $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+        
+                # Log resolved path for troubleshooting
+                if ($Path -ne $resolvedPath) {
+                    Write-Verbose "Resolved relative path from: $Path"
+                    Write-Verbose "                       to: $resolvedPath"
+                    $Path = $resolvedPath
+                }
+            }
+            catch {
+                Write-Verbose "Unable to resolve relative path components: $_"
+                # Continue with original path if resolution fails
+            }
+    
             return $Path
         }
-
         try {
             # Clean and normalize the file path
             $cleanPath = Format-UNCPath -Path $FilePath

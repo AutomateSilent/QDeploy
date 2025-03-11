@@ -71,7 +71,15 @@ function Install-Software {
             ValueFromPipelineByPropertyName = $true,
             HelpMessage = "Optional path to a log file."
         )]
-        [string]$Log
+        [string]$Log,
+        
+        [Parameter(
+            Position = 3,
+            Mandatory = $false,
+            ValueFromPipelineByPropertyName = $true,
+            HelpMessage = "If specified, does not wait for the installation to complete before returning."
+        )]
+        [switch]$NoWait
     )
 
     begin {
@@ -102,13 +110,40 @@ function Install-Software {
         # Function to clean and format UNC paths
         function Format-UNCPath {
             param([string]$Path)
+
+            Write-Verbose "Original path: $Path"
     
+            # If the path doesn't contain directory separators, check in standard locations
+            if (($Path -notmatch '[\\/]') -and ($Path -ne '')) {
+                # This is just a filename with no path - look in script directory first
+                $scriptDir = Split-Path -Parent (Join-Path $PSScriptRoot "..")
+                $possibleLocations = @(
+                    (Join-Path $scriptDir $Path),                # Script root directory
+                    (Join-Path $global:SupportDir $Path),        # Support directory
+                    (Join-Path $PSScriptRoot $Path),             # Current directory
+                    (Join-Path (Get-Location).Path $Path)        # Working directory
+                )
+        
+                Write-Verbose "Looking for file in standard locations..."
+                foreach ($location in $possibleLocations) {
+                    Write-Verbose "Checking $location"
+                    if (Test-Path -LiteralPath $location -PathType Leaf) {
+                        Write-Verbose "File found at: $location"
+                        return $location
+                    }
+                }
+        
+                # If still not found, return the original path for standard error handling
+                Write-Verbose "File not found in standard locations, returning original path"
+                return $Path
+            }
+
             # Remove PowerShell provider prefix if present
             if ($Path -match "^Microsoft\.PowerShell\.Core\\FileSystem::(.+)$") {
                 $Path = $Matches[1]
                 Write-Verbose "Removed provider prefix. Path now: $Path"
             }
-    
+
             # Handle UNC paths correctly by ensuring consistent format
             if ($Path -match "^\\\\") {
                 # Ensure proper UNC path format (replace multiple consecutive backslashes)
@@ -116,25 +151,27 @@ function Install-Software {
                 $Path = $Path -replace "\\{2,}", "\" # Replace any double backslashes in the rest of the path
                 Write-Verbose "Normalized UNC path: $Path"
             }
-    
+
             # Handle relative path components (..\) by converting to absolute path
             # This resolves path navigation elements like ..\
             try {
-                # Use GetFullPath method to resolve relative path components
-                $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-        
-                # Log resolved path for troubleshooting
-                if ($Path -ne $resolvedPath) {
+                # Only use GetFullPath if the path includes relative components or is relative
+                if (($Path -match '\.\.|\.\\') -or -not [System.IO.Path]::IsPathRooted($Path)) {
+                    # Use the script directory as base for relative paths
+                    $scriptDir = Split-Path -Parent (Join-Path $PSScriptRoot "..")
+                    $fullPath = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($scriptDir, $Path))
+            
+                    # Log resolved path for troubleshooting
                     Write-Verbose "Resolved relative path from: $Path"
-                    Write-Verbose "                       to: $resolvedPath"
-                    $Path = $resolvedPath
+                    Write-Verbose "                       to: $fullPath"
+                    $Path = $fullPath
                 }
             }
             catch {
                 Write-Verbose "Unable to resolve relative path components: $_"
                 # Continue with original path if resolution fails
             }
-    
+
             return $Path
         }
         try {
@@ -156,6 +193,12 @@ function Install-Software {
             
             Write-Verbose "Initializing installation process for $script:installerPath"
             Write-DeploymentLog -Message "Initializing installation process for $script:installerPath" -Level Info
+            
+            # Log asynchronous operation if NoWait is specified
+            if ($NoWait) {
+                Write-Verbose "NoWait parameter specified - installation will run asynchronously"
+                Write-DeploymentLog -Message "Asynchronous installation mode enabled" -Level Info
+            }
         }
         catch {
             Write-Error "Initialization failed: $_"
@@ -184,7 +227,7 @@ function Install-Software {
                 # Handle EXE installations
                 $params = @{
                     FilePath = $script:installerPath
-                    Wait = $true
+                    Wait = (-not $NoWait)  # Only wait if NoWait is not specified
                     PassThru = $true
                     Verb = 'RunAs'  # Ensures elevated privileges
                 }
@@ -219,36 +262,51 @@ function Install-Software {
                 
                 # Execute MSI installation process
                 Write-Verbose "Starting MSI installation process"
-                $process = Start-Process "C:\Windows\System32\msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
+                if ($NoWait) {
+                    # Start without waiting
+                    $process = Start-Process "C:\Windows\System32\msiexec.exe" -ArgumentList $msiArgs -PassThru -Verb RunAs
+                    Write-DeploymentLog -Message "MSI installation started asynchronously (PID: $($process.Id))" -Level Info
+                } else {
+                    # Start and wait for completion
+                    $process = Start-Process "C:\Windows\System32\msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
+                }
             }
 
-            # Process the exit code
-            if ($process.ExitCode -eq 0) {
-                Write-DeploymentLog -Message "Installation completed successfully with exit code: $($process.ExitCode)" -Level Info
-            }
-            elseif ($process.ExitCode -eq 3010) {
-                Write-DeploymentLog -Message "Installation completed with exit code: $($process.ExitCode). System restart required." -Level Warning
-            }
-            else {
-                Write-DeploymentLog -Message "Installation failed with exit code: $($process.ExitCode)" -Level Error
-                
-                # Provide more detailed error information for common MSI exit codes
-                switch ($process.ExitCode) {
-                    1619 {
-                        Write-DeploymentLog -Message "Error 1619: This installation package could not be opened. Verify that the package exists and that you can access it." -Level Error
-                        Write-Verbose "Path used: $script:installerPath"
-                        Write-Verbose "Check if the file exists: $(Test-Path -LiteralPath $script:installerPath -PathType Leaf)"
-                    }
-                    1603 {
-                        Write-DeploymentLog -Message "Error 1603: A fatal error occurred during installation. Check the MSI log for more details." -Level Error
-                    }
-                    1612 {
-                        Write-DeploymentLog -Message "Error 1612: The installation source for this product is not available. Verify the source exists and that you can access it." -Level Error
-                    }
-                    1638 {
-                        Write-DeploymentLog -Message "Error 1638: Another version of this product is already installed. Installation cannot continue." -Level Error
+            # Process the exit code only if we waited for completion
+            if (-not $NoWait) {
+                if ($process.ExitCode -eq 0) {
+                    Write-DeploymentLog -Message "Installation completed successfully with exit code: $($process.ExitCode)" -Level Info
+                }
+                elseif ($process.ExitCode -eq 3010) {
+                    Write-DeploymentLog -Message "Installation completed with exit code: $($process.ExitCode). System restart required." -Level Warning
+                }
+                else {
+                    Write-DeploymentLog -Message "Installation failed with exit code: $($process.ExitCode)" -Level Error
+                    
+                    # Provide more detailed error information for common MSI exit codes
+                    switch ($process.ExitCode) {
+                        1619 {
+                            Write-DeploymentLog -Message "Error 1619: This installation package could not be opened. Verify that the package exists and that you can access it." -Level Error
+                            Write-Verbose "Path used: $script:installerPath"
+                            Write-Verbose "Check if the file exists: $(Test-Path -LiteralPath $script:installerPath -PathType Leaf)"
+                        }
+                        1603 {
+                            Write-DeploymentLog -Message "Error 1603: A fatal error occurred during installation. Check the MSI log for more details." -Level Error
+                        }
+                        1612 {
+                            Write-DeploymentLog -Message "Error 1612: The installation source for this product is not available. Verify the source exists and that you can access it." -Level Error
+                        }
+                        1638 {
+                            Write-DeploymentLog -Message "Error 1638: Another version of this product is already installed. Installation cannot continue." -Level Error
+                        }
                     }
                 }
+            } else {
+                # For asynchronous operations, we can only report that it was started
+                Write-DeploymentLog -Message "Installation process started with PID: $($process.Id)" -Level Info
+                
+                # Return the process object for potential monitoring
+                return $process
             }
         }
         catch {
@@ -258,7 +316,12 @@ function Install-Software {
     }
 
     end {
-        Write-Verbose "Installation process completed for $script:installerPath"
-        Write-DeploymentLog -Message "Installation process completed for $script:installerPath" -Level Info
+        if ($NoWait) {
+            Write-Verbose "Installation process initiated asynchronously for $script:installerPath"
+            Write-DeploymentLog -Message "Installation process initiated asynchronously for $script:installerPath" -Level Info
+        } else {
+            Write-Verbose "Installation process completed for $script:installerPath"
+            Write-DeploymentLog -Message "Installation process completed for $script:installerPath" -Level Info
+        }
     }
 }

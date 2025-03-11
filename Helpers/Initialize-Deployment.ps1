@@ -57,7 +57,7 @@ function Initialize-Deployment {
         }
 
         # Set global variables
-        $global:SupportDir = Join-Path $PSScriptRoot "..\Support"
+        $global:SupportDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Support"))
         $global:PublicDesktop = "$($Env:PUBLIC)\Desktop"
         $global:StartMenu = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs"
         

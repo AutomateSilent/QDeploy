@@ -65,7 +65,7 @@ QDeploy/
 
 *The framework automatically imports helpers and initializes the environment, giving you a clean foundation to build upon while handling the tedious setup work for you.*
 
-### Implementation Examples
+### Implementation Overview
 ![Installation Function](https://github.com/user-attachments/assets/3917a37d-6735-4215-b833-f7472a6ad96c)
 
 *The Install-Script function demonstrates QDeploy's organized approach to deployment tasks with proper error handling and logging. Create your implementation within this structure for consistent, reliable scripts.*

@@ -24,11 +24,27 @@ Install QDeploy with a single PowerShell command (run as administrator):
 irm https://raw.githubusercontent.com/AutomateSilent/QDeploy/main/Copy-QDeploy.ps1 | iex -Verbose
 ```
 
+![QDeploy Installer](https://github.com/user-attachments/assets/46111784-1688-4e5f-8c8f-cbed7a928be8)
+
+*QDeploy will be installed to the specified location. If an Application Name is provided, the folder will be named 'QDeploy - [AppName]' and the $AppName variable in QDeploy.ps1 will be set to this value.*
+
 This will:
 1. Download the latest QDeploy release
 2. Launch a UI to select your installation directory (default: C:\QDeploy)
 3. Extract all necessary files
 
+## 🚀 Quick Start
+
+1. Implement your deployment logic in the Install-Script and Uninstall-Script functions
+2. Open powershell as admin and Run the script:
+   ```powershell
+   # For installation
+   .\QDeploy.ps1 -Verbose
+   
+   # For uninstallation
+   .\QDeploy.ps1 -Uninstall -Verbose
+   ```
+   
 ## 📂 Project Structure
 
 ```
@@ -38,70 +54,38 @@ QDeploy/
 ├── Helpers/                  # Helper functions directory
 │   ├── Initialize-Deployment.ps1    # Core initialization
 │   ├── Write-DeploymentLog.ps1      # Logging function
-│   └── [Your custom helpers]        # Add your own
+│   └── [Your custom helpers]        # Add your own (Useful examples are provided)
 └── Support/                  # Resources directory
     └── [Your deployment files]      # Config files, resources, etc.
 ```
 
-## 🚀 Quick Start
-
-1. After installation, navigate to the QDeploy directory
-2. Customize the QDeploy.ps1 file with your deployment name:
-   ```powershell
-   $AppName = "YourApplication"
-   ```
-3. Implement your deployment logic in the Install-Script and Uninstall-Script functions
-4. Run the script:
-   ```powershell
-   # For installation
-   .\QDeploy.ps1
-   
-   # For uninstallation
-   .\QDeploy.ps1 -Uninstall
-   ```
-
 ## 📝 Core Functions
+### Script Structure & Initialization
+![Main Script Structure](https://github.com/user-attachments/assets/effc8b2c-4e5d-4636-a92e-8c2d0f63fb0e)
 
-### Initialize-Deployment
-Sets up the deployment environment:
-```powershell
-Initialize-Deployment [-AppName <string>] [-CustomLogPath <string>]
-```
+*The framework automatically imports helpers and initializes the environment, giving you a clean foundation to build upon while handling the tedious setup work for you.*
 
-### Write-DeploymentLog
-Handles standardized logging:
-```powershell
-Write-DeploymentLog [-Message] <string> [-Level {Info | Warning | Error}]
-```
+### Implementation Examples
+![Installation Function](https://github.com/user-attachments/assets/3917a37d-6735-4215-b833-f7472a6ad96c)
 
-## 📋 Example Usage
+*The Install-Script function demonstrates QDeploy's organized approach to deployment tasks with proper error handling and logging. Create your implementation within this structure for consistent, reliable scripts.*
 
-### Basic Deployment Script
-```powershell
-# Inside QDeploy.ps1, after importing helpers:
+![Uninstallation Function](https://github.com/user-attachments/assets/0c06a763-6bbd-4504-8745-5b52d01cb13b)
 
-function Install-Script {
-    try {
-        Write-DeploymentLog "Starting installation of $AppName"
-        
-        # Install an MSI package
-        $msiPath = Join-Path $scriptPath "MyApplication.msi"
-        Install-Software -FilePath $msiPath
-        
-        # Copy a configuration file
-        $configSource = Join-Path $SupportDir "config.xml"
-        $configDest = "C:\Program Files\MyApplication\config.xml"
-        Copy-Item -Path $configSource -Destination $configDest -Force
-        
-        Write-DeploymentLog "Installation completed successfully"
-        return $true
-    }
-    catch {
-        Write-DeploymentLog "Installation failed: $_" -Level Error
-        return $false
-    }
-}
-```
+*The Uninstall-Script function shows how QDeploy handles removal operations with the same level of organization and error handling, making your scripts professional and complete.*
+
+### Execution Logic
+![Execution Flow](https://github.com/user-attachments/assets/d5483e68-16da-450a-ada4-0f7fde5f0200)
+
+*QDeploy's main execution block handles parameter selection and provides proper exit codes, ensuring your script integrates well with other systems and deployment tools.*
+
+## Key Features
+
+- **Modular Design** - Organize your code with auto-imported helper functions
+- **Robust Logging** - Color-coded console output and detailed log files
+- **Error Handling** - Comprehensive try/catch blocks with appropriate exit codes
+- **Dual-Mode Support** - Install and uninstall operations in a single script
+- **Support Directory** - Organized storage for deployment resources
 
 
 ## 🔄 Integration with Deployment Tools

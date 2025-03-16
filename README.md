@@ -1,7 +1,7 @@
 # 🚀 QDeploy - PowerShell Deployment Framework
-
 [![GitHub license](https://img.shields.io/github/license/AutomateSilent/QDeploy)](https://github.com/AutomateSilent/QDeploy/blob/main/LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/AutomateSilent/QDeploy)](https://github.com/AutomateSilent/QDeploy/releases)
+![QDeploy Logo](https://github.com/user-attachments/assets/9acd2078-8387-41d0-9f2e-afb75a549af0)
 
 ## 💡 What is QDeploy?
 

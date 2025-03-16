@@ -3,9 +3,9 @@
 [![GitHub license](https://img.shields.io/github/license/AutomateSilent/QDeploy)](https://github.com/AutomateSilent/QDeploy/blob/main/LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/AutomateSilent/QDeploy)](https://github.com/AutomateSilent/QDeploy/releases)
 
-## 📋 Overview
+## 💡 What is QDeploy?
 
-QDeploy is a lightweight framework for creating structured, reliable PowerShell deployment scripts. It provides a consistent template structure with built-in logging, helper functions, and best practices for software deployment.
+QDeploy is a flexible PowerShell framework that provides a structured foundation for **any type of deployment, configuration, or automation task** in Windows environments. With its organized template structure, robust logging, and error handling, QDeploy helps you create professional and reliable deployments for a wide range of everyday IT operations.
 
 ## ✨ Features
 

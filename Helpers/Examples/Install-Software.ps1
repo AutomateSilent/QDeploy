@@ -112,67 +112,46 @@ function Install-Software {
             param([string]$Path)
 
             Write-Verbose "Original path: $Path"
-    
-            # If the path doesn't contain directory separators, check in standard locations
-            if (($Path -notmatch '[\\/]') -and ($Path -ne '')) {
-                # This is just a filename with no path - look in script directory first
-                $scriptDir = Split-Path -Parent (Join-Path $PSScriptRoot "..")
-                $possibleLocations = @(
-                    (Join-Path $scriptDir $Path),                # Script root directory
-                    (Join-Path $global:SupportDir $Path),        # Support directory
-                    (Join-Path $PSScriptRoot $Path),             # Current directory
-                    (Join-Path (Get-Location).Path $Path)        # Working directory
-                )
-        
-                Write-Verbose "Looking for file in standard locations..."
-                foreach ($location in $possibleLocations) {
-                    Write-Verbose "Checking $location"
-                    if (Test-Path -LiteralPath $location -PathType Leaf) {
-                        Write-Verbose "File found at: $location"
-                        return $location
-                    }
-                }
-        
-                # If still not found, return the original path for standard error handling
-                Write-Verbose "File not found in standard locations, returning original path"
-                return $Path
-            }
 
-            # Remove PowerShell provider prefix if present
-            if ($Path -match "^Microsoft\.PowerShell\.Core\\FileSystem::(.+)$") {
+            # Remove PowerShell provider prefix if present (e.g., FileSystem::)
+            if ($Path -match '^[a-zA-Z0-9]+::(.+)$') {
                 $Path = $Matches[1]
                 Write-Verbose "Removed provider prefix. Path now: $Path"
             }
 
-            # Handle UNC paths correctly by ensuring consistent format
-            if ($Path -match "^\\\\") {
-                # Ensure proper UNC path format (replace multiple consecutive backslashes)
-                $Path = $Path -replace "^\\{2,}", "\\" # Ensure exactly two backslashes at start for UNC
-                $Path = $Path -replace "\\{2,}", "\" # Replace any double backslashes in the rest of the path
-                Write-Verbose "Normalized UNC path: $Path"
+            # Ensure UNC paths start with \\ by replacing any number of leading slashes/backslashes
+            if ($Path -match '^[\\/]+') {
+                $Path = $Path -replace '^[\\/]+', '\\'
+                Write-Verbose "Ensured UNC prefix. Path now: $Path"
             }
 
-            # Handle relative path components (..\) by converting to absolute path
-            # This resolves path navigation elements like ..\
+            # Use Resolve-Path to get the absolute, cleaned path.
+            # This handles relative paths (./, ../) and standardizes the format.
+            # Use -ErrorAction SilentlyContinue because Resolve-Path errors if the path doesn't exist,
+            # but we want the *potential* path resolved for Test-Path later.
+            $resolvedPath = $null
             try {
-                # Only use GetFullPath if the path includes relative components or is relative
-                if (($Path -match '\.\.|\.\\') -or -not [System.IO.Path]::IsPathRooted($Path)) {
-                    # Use the script directory as base for relative paths
-                    $scriptDir = Split-Path -Parent (Join-Path $PSScriptRoot "..")
-                    $fullPath = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($scriptDir, $Path))
-            
-                    # Log resolved path for troubleshooting
-                    Write-Verbose "Resolved relative path from: $Path"
-                    Write-Verbose "                       to: $fullPath"
-                    $Path = $fullPath
+                $resolvedPathItem = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
+                if ($resolvedPathItem) {
+                    # Handle potential multiple resolved paths (though unlikely for a file)
+                    if ($resolvedPathItem -is [array]) {
+                        $resolvedPath = $resolvedPathItem[0].ProviderPath
+                    } else {
+                        $resolvedPath = $resolvedPathItem.ProviderPath
+                    }
+                    Write-Verbose "Resolved path using Resolve-Path: $resolvedPath"
+                    return $resolvedPath # Return the fully resolved path
+                } else {
+                    Write-Verbose "Resolve-Path could not find path '$Path'. Using normalized path for Test-Path."
+                    # If Resolve-Path fails (e.g., path doesn't exist), return the normalized path
+                    # Test-Path will perform the final existence check.
+                    return $Path
                 }
+            } catch {
+                Write-Verbose "Error during Resolve-Path for '$Path': $_. Using normalized path."
+                # Fallback to the normalized path if Resolve-Path throws an unexpected error
+                return $Path
             }
-            catch {
-                Write-Verbose "Unable to resolve relative path components: $_"
-                # Continue with original path if resolution fails
-            }
-
-            return $Path
         }
         try {
             # Clean and normalize the file path

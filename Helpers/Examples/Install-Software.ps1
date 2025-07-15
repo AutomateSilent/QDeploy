@@ -41,8 +41,8 @@
 .NOTES
     Name: Install-Software
     Author: AutomateSilent
-    Version: 1.0.4
-    Last Updated: 2025-03-05
+    Version: 1.0.5
+    Last Updated: 2025-07-15
     Requires: Write-DeploymentLog function to be imported prior to execution
 #>
 function Install-Software {
@@ -225,14 +225,25 @@ function Install-Software {
                 $quotedPath = "`"$script:installerPath`""
                 Write-DeploymentLog -Message "Using installation path: $quotedPath" -Level Info
                 
-                # Build MSI command arguments
+                # Generate log file path for MSI if not explicitly provided
+                $msiLogPath = if ($Log) { 
+                    $Log 
+                } else { 
+                    $tempDir = [System.IO.Path]::GetTempPath()
+                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($script:installerPath)
+                    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                    Join-Path $tempDir "$fileName`_install_$timestamp.log"
+                }
+                Write-DeploymentLog -Message "MSI log will be written to: $msiLogPath" -Level Info
+                
+                # Build MSI command arguments with detailed logging
                 if ($Arguments) {
-                    $msiArgs = "/i $quotedPath $Arguments"
-                    Write-DeploymentLog -Message "Using custom MSI arguments: $Arguments" -Level Info
+                    $msiArgs = "/i $quotedPath $Arguments /L*V `"$msiLogPath`""
+                    Write-DeploymentLog -Message "Using custom MSI arguments with logging: $Arguments /L*V" -Level Info
                 }
                 else {
-                    $msiArgs = "/i $quotedPath /qn"
-                    Write-DeploymentLog -Message "Using default MSI arguments: /qn" -Level Info
+                    $msiArgs = "/i $quotedPath /qn /norestart /L*V `"$msiLogPath`""
+                    Write-DeploymentLog -Message "Using default MSI arguments with logging: /qn /norestart /L*V" -Level Info
                 }
                 
                 # Log full command for troubleshooting
